@@ -1,4 +1,4 @@
-# SwasthyaSetu AI — Backend
+ # SwasthyaSetu AI — Backend
 
 FastAPI backend for the **SwasthyaSetu AI** hackathon demo. It provides authentication, patient registration, consultations with mock voice transcription, deterministic safety triage, referrals/specialist review, offline sync, and dashboard APIs.
 

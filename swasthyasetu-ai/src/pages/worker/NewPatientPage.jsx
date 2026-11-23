@@ -1,0 +1,200 @@
+import { useMemo, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { FilePenLine, Mic, Save, ShieldCheck, UserPlus } from 'lucide-react';
+import { Card, CardHeader, SectionHeading } from '../../components/ui/Card';
+import { Button } from '../../components/ui/Button';
+import { Field, Input, Select, Textarea, Checkbox } from '../../components/ui/Form';
+import { InfoBanner } from '../../components/ui/Feedback';
+import { Badge } from '../../components/ui/Badge';
+import { useApp } from '../../context/AppContext';
+import { useAuth } from '../../context/AuthContext';
+import { useI18n } from '../../context/I18nContext';
+import { useToast } from '../../context/ToastContext';
+import { validatePatient } from '../../utils/validators';
+import { nextPatientSequence } from '../../database/seed';
+import { patientId as makePatientId } from '../../utils/id';
+
+const EMPTY = {
+  name: '', age: '', dob: '', sex: '', village: '', phone: '',
+  medicalHistory: '', allergies: '', consent: false,
+};
+
+export default function NewPatientPage() {
+  const [values, setValues] = useState(EMPTY);
+  const [errors, setErrors] = useState({});
+  const [saving, setSaving] = useState('');
+  const { patients, addPatient } = useApp();
+  const { user } = useAuth();
+  const { t } = useI18n();
+  const { toast } = useToast();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+
+  const previewId = useMemo(() => makePatientId(nextPatientSequence(patients)), [patients]);
+  const set = (key, value) => {
+    setValues((prev) => ({ ...prev, [key]: value }));
+    setErrors((prev) => ({ ...prev, [key]: undefined }));
+  };
+
+  const calculateAge = () => {
+    if (!values.dob) return Number(values.age);
+    const dob = new Date(values.dob);
+    if (Number.isNaN(dob.getTime())) return Number(values.age);
+    const now = new Date();
+    let age = now.getFullYear() - dob.getFullYear();
+    if (now.getMonth() < dob.getMonth() || (now.getMonth() === dob.getMonth() && now.getDate() < dob.getDate())) age -= 1;
+    return age;
+  };
+
+  const persist = async (draft, action = 'save') => {
+    const validation = validatePatient(values);
+    if (!draft && Object.keys(validation).length) {
+      setErrors(validation);
+      toast('Please correct the highlighted fields.', 'error', 'Validation error');
+      return null;
+    }
+    if (draft && !values.name.trim()) {
+      setErrors({ name: 'A draft needs at least a patient name.' });
+      return null;
+    }
+    setSaving(draft ? 'draft' : action);
+    try {
+      const record = await addPatient({
+        ...values,
+        name: values.name.trim(),
+        age: calculateAge(),
+        medicalHistory: values.medicalHistory.trim() || 'No significant history recorded.',
+        allergies: values.allergies.trim() || 'None known',
+        consent: draft ? false : values.consent,
+      }, {
+        draft,
+        actor: user?.name,
+        role: user?.role,
+      });
+      toast(draft ? `Draft saved locally for ${record.name}` : `Patient ${record.patientId} registered and saved offline`, 'success', 'Record saved');
+      return record;
+    } catch (error) {
+      toast(error.message || 'Could not save the record.', 'error', 'Save failed');
+      return null;
+    } finally {
+      setSaving('');
+    }
+  };
+
+  const handleSave = async () => {
+    const record = await persist(false);
+    if (record) navigate(`/app/patients/${encodeURIComponent(record.patientId)}`);
+  };
+
+  const handleDraft = async () => {
+    const record = await persist(true);
+    if (record) setValues(EMPTY);
+  };
+
+  const handleStartConsultation = async () => {
+    const record = await persist(false, 'consult');
+    if (record) navigate(`/app/consultation/new?patient=${encodeURIComponent(record.id)}`);
+  };
+
+  return (
+    <div className="space-y-6">
+      <SectionHeading
+        eyebrow="Step 1 of 3 · Registration"
+        title={t('reg.title')}
+        subtitle={t('reg.subtitle')}
+        action={<Badge tone="amber">Simulated records · no real patient data</Badge>}
+      />
+
+      <InfoBanner tone="info" title="Consent and privacy">
+        Record consent before saving. All records stay in this browser’s private IndexedDB until synchronized. Never enter real patient details in this demonstration build.
+      </InfoBanner>
+
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_320px]">
+        <Card>
+          <CardHeader title="Patient details" subtitle="Fields marked * are required" />
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Field label={t('reg.name')} htmlFor="patient-name" required error={errors.name}>
+              <Input id="patient-name" value={values.name} onChange={(event) => set('name', event.target.value)} placeholder="e.g. Kamala Devi" error={errors.name} />
+            </Field>
+            <Field label={t('reg.patientId')} htmlFor="patient-id" hint={t('reg.autoGenerated')}>
+              <Input id="patient-id" value={previewId} readOnly className="bg-slate-50 font-mono font-semibold text-brand-700" />
+            </Field>
+            <Field label={t('reg.age')} htmlFor="patient-age" error={errors.age}>
+              <Input id="patient-age" type="number" min="0" max="120" value={values.age} onChange={(event) => set('age', event.target.value)} placeholder="e.g. 35" />
+            </Field>
+            <Field label={t('reg.dob')} htmlFor="patient-dob">
+              <Input id="patient-dob" type="date" value={values.dob} onChange={(event) => set('dob', event.target.value)} />
+            </Field>
+            <Field label={t('reg.sex')} htmlFor="patient-sex" required error={errors.sex}>
+              <Select id="patient-sex" value={values.sex} onChange={(event) => set('sex', event.target.value)}>
+                <option value="">Select</option>
+                <option value="Female">Female</option>
+                <option value="Male">Male</option>
+                <option value="Other / prefer not to say">Other / prefer not to say</option>
+              </Select>
+            </Field>
+            <Field label={t('reg.village')} htmlFor="patient-village" required error={errors.village}>
+              <Input id="patient-village" value={values.village} onChange={(event) => set('village', event.target.value)} placeholder="e.g. Bagalur" />
+            </Field>
+            <Field label={`${t('reg.phone')} (${t('optional')})`} htmlFor="patient-phone" error={errors.phone}>
+              <Input id="patient-phone" value={values.phone} onChange={(event) => set('phone', event.target.value)} placeholder="+91 98765 00000" />
+            </Field>
+          </div>
+
+          <div className="mt-5 space-y-4 border-t border-slate-100 pt-5">
+            <Field label={t('reg.history')} htmlFor="patient-history" hint="Conditions, previous treatments or surgeries">
+              <Textarea id="patient-history" value={values.medicalHistory} onChange={(event) => set('medicalHistory', event.target.value)} rows={3} placeholder="e.g. Hypertension, diabetes…" />
+            </Field>
+            <Field label={t('reg.allergies')} htmlFor="patient-allergies">
+              <Input id="patient-allergies" value={values.allergies} onChange={(event) => set('allergies', event.target.value)} placeholder="e.g. Penicillin or None known" />
+            </Field>
+            <div>
+              <Checkbox
+                label={t('reg.consent')}
+                description={t('reg.consentHelp')}
+                checked={values.consent}
+                onChange={(event) => set('consent', event.target.checked)}
+                className={errors.consent ? 'border-red-300 bg-red-50/50' : ''}
+              />
+              {errors.consent && <p className="mt-1.5 text-xs font-medium text-red-600">{errors.consent}</p>}
+            </div>
+          </div>
+
+          <div className="mt-6 flex flex-wrap gap-3 border-t border-slate-100 pt-5">
+            <Button variant="primary" icon={Save} loading={saving === 'save'} onClick={handleSave}>{t('reg.savePatient')}</Button>
+            <Button variant="outline" icon={FilePenLine} loading={saving === 'draft'} onClick={handleDraft}>{t('reg.saveDraft')}</Button>
+            <Button variant="secondary" icon={Mic} loading={saving === 'consult'} onClick={handleStartConsultation}>{t('reg.startConsultation')}</Button>
+          </div>
+        </Card>
+
+        <div className="space-y-4">
+          <Card className="border-brand-200 bg-brand-50/50">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-600 text-white"><Mic size={20} /></div>
+            <h3 className="mt-4 text-sm font-bold text-slate-900">What happens next?</h3>
+            <ol className="mt-3 space-y-3 text-xs text-slate-600">
+              {[
+                ['1', 'Register patient', 'Basic details and consent are saved locally.'],
+                ['2', 'Voice consultation', 'Speak in Kannada or Hindi and review the transcript.'],
+                ['3', 'Assessment', 'Confirm symptoms, enter vitals and review safety alerts.'],
+                ['4', 'Referral (if needed)', 'Create and submit for remote specialist review.'],
+              ].map(([step, title, text]) => (
+                <li key={step} className="flex gap-2.5">
+                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-brand-600 text-[10px] font-bold text-white">{step}</span>
+                  <span><strong className="block text-slate-800">{title}</strong>{text}</span>
+                </li>
+              ))}
+            </ol>
+          </Card>
+          <Card>
+            <div className="flex items-center gap-2 text-brand-700"><ShieldCheck size={18} /><p className="text-sm font-bold">Clinical decision support</p></div>
+            <p className="mt-2 text-xs leading-relaxed text-slate-600">This interface helps organize information and highlight predefined warning signs. It does not diagnose, prescribe medication or replace professional judgement.</p>
+          </Card>
+          <Card className="flex items-center gap-3">
+            <UserPlus size={20} className="text-slate-400" />
+            <div><p className="text-xs font-semibold text-slate-800">Registered on this device</p><p className="text-2xl font-bold text-slate-900">{patients.length}</p></div>
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+}

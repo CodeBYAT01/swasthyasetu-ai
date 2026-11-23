@@ -270,3 +270,5 @@ Also set frontend base URL to include `/api`, e.g. `VITE_API_URL=http://127.0.0.
 - **409 Conflict**: duplicate patient code, missing consent, sync conflict, or duplicate review.
 - **Alembic on SQLite**: migration was generated for compatibility; PostgreSQL is the target production DB.
 - **`DLL load failed` on Windows**: see “Windows Application Control / DLL note” above.
+#   s w a s t h y a s e t u - a i  
+ 

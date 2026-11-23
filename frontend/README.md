@@ -18,7 +18,7 @@ React 18 · Vite 5 · JavaScript · Tailwind CSS · React Router · Lucide React
 ## Quick start
 
 ```bash
-cd swasthyasetu-ai
+cd frontend
 npm install
 npm run dev
 ```
@@ -68,7 +68,7 @@ Settings → **Reset demonstration data** restores the seeded dataset.
 ## Project structure
 
 ```
-swasthyasetu-ai/
+frontend/
 ├─ public/                 manifest, service worker, icons
 ├─ scripts/                Playwright verification scripts (smoke, routes, i18n)
 ├─ src/
